@@ -1,0 +1,51 @@
+# OpenClaw Fork — Update & Deploy Procedure
+
+This is a fork of [openclaw/openclaw](https://github.com/openclaw/openclaw).
+Custom fixes live on top of upstream `main` via rebase.
+
+## Fork remotes
+
+- `origin` → `https://github.com/openclaw/openclaw` (upstream, read-only)
+- `fork` → `git@github.com:holodnsk/openclaw.git` (our fork, push here)
+
+## How to update from upstream and redeploy
+
+```bash
+cd /root/openclaw
+git fetch origin
+git rebase origin/main
+# resolve conflicts if any, then: git rebase --continue
+pnpm install
+pnpm build
+npm pack
+sudo npm install -g ./openclaw-*.tgz
+rm -f openclaw-*.tgz
+pkill -9 -f openclaw-gateway || true
+nohup openclaw gateway run --bind loopback --port 18789 --force > /tmp/openclaw-gateway.log 2>&1 &
+```
+
+After redeploying, push rebased branch to fork:
+
+```bash
+git push fork main --force-with-lease
+```
+
+## Verify gateway is running
+
+```bash
+ss -ltnp | grep 18789
+openclaw channels status --probe
+openclaw --version
+```
+
+## Custom fixes in this fork
+
+1. **fix(cron): keep context.cron in sync after hot-reload**
+   — `src/gateway/server.impl.ts`: gateway context now updates `cron` and
+   `cronStorePath` on config reload so WS handlers always see the active
+   CronService instance.
+
+2. **fix(heartbeat): don't skip heartbeat when system events are pending**
+   — `src/infra/heartbeat-runner.ts`: the "empty HEARTBEAT.md" skip now
+   checks `hasSystemEvents(sessionKey)` so cron reminders and other system
+   events are delivered even when the heartbeat file is empty.
