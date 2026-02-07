@@ -3,8 +3,10 @@ import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
+import { clearAllActiveEmbeddedRuns } from "../agents/pi-embedded-runner/runs.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
+import { clearAllLanes } from "../process/command-queue.js";
 
 export function createGatewayCloseHandler(params: {
   bonjourStop: (() => Promise<void>) | null;
@@ -96,6 +98,10 @@ export function createGatewayCloseHandler(params: {
       }
     }
     params.chatRunState.clear();
+    // Clear module-level in-memory state so stale runs/lanes don't survive
+    // an in-process (SIGUSR1) restart.
+    clearAllActiveEmbeddedRuns();
+    clearAllLanes();
     for (const c of params.clients) {
       try {
         c.socket.close(1012, "service restart");

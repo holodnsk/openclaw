@@ -137,4 +137,24 @@ export function clearActiveEmbeddedRun(sessionId: string, handle: EmbeddedPiQueu
   }
 }
 
+/**
+ * Force-clear all active embedded runs and notify waiters.
+ * Called during gateway shutdown/restart to avoid stale in-memory state
+ * surviving an in-process (SIGUSR1) restart.
+ */
+export function clearAllActiveEmbeddedRuns() {
+  const count = ACTIVE_EMBEDDED_RUNS.size;
+  if (count === 0) {
+    return 0;
+  }
+  const sessionIds = [...ACTIVE_EMBEDDED_RUNS.keys()];
+  ACTIVE_EMBEDDED_RUNS.clear();
+  for (const sessionId of sessionIds) {
+    logSessionStateChange({ sessionId, state: "idle", reason: "shutdown_clear" });
+    notifyEmbeddedRunEnded(sessionId);
+  }
+  diag.debug(`all active runs cleared: count=${count}`);
+  return count;
+}
+
 export type { EmbeddedPiQueueHandle };

@@ -158,3 +158,11 @@ export function clearCommandLane(lane: string = CommandLane.Main) {
   state.queue.length = 0;
   return removed;
 }
+
+/**
+ * Reset all lane state. Called during gateway shutdown/restart so stale
+ * active counts and queued tasks don't survive an in-process (SIGUSR1) restart.
+ */
+export function clearAllLanes() {
+  lanes.clear();
+}
