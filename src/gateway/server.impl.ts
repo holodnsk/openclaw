@@ -55,6 +55,7 @@ import { startGatewayMaintenanceTimers } from "./server-maintenance.js";
 import { GATEWAY_EVENTS, listGatewayMethods } from "./server-methods-list.js";
 import { coreGatewayHandlers } from "./server-methods.js";
 import { createExecApprovalHandlers } from "./server-methods/exec-approval.js";
+import type { GatewayRequestContext } from "./server-methods/types.js";
 import { safeParseJson } from "./server-methods/nodes.helpers.js";
 import { hasConnectedMobileNode } from "./server-mobile-nodes.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
@@ -469,6 +470,48 @@ export async function startGatewayServer(
 
   const canvasHostServerPort = (canvasHostServer as CanvasHostServer | null)?.port;
 
+  // Mutable context shared with WS handlers – properties that change on hot
+  // reload (e.g. cron, cronStorePath) must be updated in setState below.
+  const gatewayContext: GatewayRequestContext = {
+    deps,
+    cron,
+    cronStorePath,
+    loadGatewayModelCatalog,
+    getHealthCache,
+    refreshHealthSnapshot: refreshGatewayHealthSnapshot,
+    logHealth,
+    logGateway: log,
+    incrementPresenceVersion,
+    getHealthVersion,
+    broadcast,
+    broadcastToConnIds,
+    nodeSendToSession,
+    nodeSendToAllSubscribed,
+    nodeSubscribe,
+    nodeUnsubscribe,
+    nodeUnsubscribeAll,
+    hasConnectedMobileNode: hasMobileNodeConnected,
+    nodeRegistry,
+    agentRunSeq,
+    chatAbortControllers,
+    chatAbortedRuns: chatRunState.abortedRuns,
+    chatRunBuffers: chatRunState.buffers,
+    chatDeltaSentAt: chatRunState.deltaSentAt,
+    addChatRun,
+    removeChatRun,
+    registerToolEventRecipient: toolEventRecipients.add,
+    dedupe,
+    wizardSessions,
+    findRunningWizard,
+    purgeWizardSession,
+    getRuntimeSnapshot,
+    startChannel,
+    stopChannel,
+    markChannelLoggedOut,
+    wizardRunner,
+    broadcastVoiceWakeChanged,
+  };
+
   attachGatewayWsHandlers({
     wss,
     clients,
@@ -487,45 +530,7 @@ export async function startGatewayServer(
       ...execApprovalHandlers,
     },
     broadcast,
-    context: {
-      deps,
-      cron,
-      cronStorePath,
-      loadGatewayModelCatalog,
-      getHealthCache,
-      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
-      logHealth,
-      logGateway: log,
-      incrementPresenceVersion,
-      getHealthVersion,
-      broadcast,
-      broadcastToConnIds,
-      nodeSendToSession,
-      nodeSendToAllSubscribed,
-      nodeSubscribe,
-      nodeUnsubscribe,
-      nodeUnsubscribeAll,
-      hasConnectedMobileNode: hasMobileNodeConnected,
-      nodeRegistry,
-      agentRunSeq,
-      chatAbortControllers,
-      chatAbortedRuns: chatRunState.abortedRuns,
-      chatRunBuffers: chatRunState.buffers,
-      chatDeltaSentAt: chatRunState.deltaSentAt,
-      addChatRun,
-      removeChatRun,
-      registerToolEventRecipient: toolEventRecipients.add,
-      dedupe,
-      wizardSessions,
-      findRunningWizard,
-      purgeWizardSession,
-      getRuntimeSnapshot,
-      startChannel,
-      stopChannel,
-      markChannelLoggedOut,
-      wizardRunner,
-      broadcastVoiceWakeChanged,
-    },
+    context: gatewayContext,
   });
   logGatewayStartup({
     cfg: cfgAtStart,
@@ -573,6 +578,11 @@ export async function startGatewayServer(
       cronState = nextState.cronState;
       cron = cronState.cron;
       cronStorePath = cronState.storePath;
+      // Keep the shared gateway context in sync so WS handlers see the new
+      // CronService after a hot reload (the context object is captured by
+      // reference in buildRequestContext).
+      gatewayContext.cron = cron;
+      gatewayContext.cronStorePath = cronStorePath;
       browserControl = nextState.browserControl;
     },
     startChannel,
@@ -604,7 +614,7 @@ export async function startGatewayServer(
     canvasHostServer,
     stopChannel,
     pluginServices,
-    cron,
+    cron: { stop: () => gatewayContext.cron.stop() },
     heartbeatRunner,
     nodePresenceTimers,
     broadcast,
