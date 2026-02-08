@@ -96,6 +96,15 @@ const EXEC_EVENT_PROMPT =
   "Please relay the command output to the user in a helpful way. If the command succeeded, share the relevant output. " +
   "If it failed, explain what went wrong.";
 
+// Prompt used when there are pending system events (cron reminders, scheduled tasks, etc.)
+// that must be relayed to the user. Without this override the standard heartbeat prompt
+// tells the model to reply HEARTBEAT_OK "if nothing needs attention", and weaker models
+// treat the system-event lines as background context rather than actionable items.
+const SYSTEM_EVENT_PROMPT =
+  "You have pending scheduled reminders / system events shown in the system messages above. " +
+  "Relay each event to the user as-is — do NOT summarize, skip, or reply HEARTBEAT_OK. " +
+  "Simply forward the reminder text to the user.";
+
 function resolveActiveHoursTimezone(cfg: OpenClawConfig, raw?: string): string {
   const trimmed = raw?.trim();
   if (!trimmed || trimmed === "user") {
@@ -574,7 +583,13 @@ export async function runHeartbeatOnce(opts: {
   const pendingEvents = isExecEvent ? peekSystemEvents(sessionKey) : [];
   const hasExecCompletion = pendingEvents.some((evt) => evt.includes("Exec finished"));
 
-  const prompt = hasExecCompletion ? EXEC_EVENT_PROMPT : resolveHeartbeatPrompt(cfg, heartbeat);
+  // Choose prompt: exec-event > system-event (cron etc.) > standard heartbeat.
+  // Without this, weaker models reply HEARTBEAT_OK even when cron reminders are pending.
+  const prompt = hasExecCompletion
+    ? EXEC_EVENT_PROMPT
+    : hasPendingSystemEvents
+      ? SYSTEM_EVENT_PROMPT
+      : resolveHeartbeatPrompt(cfg, heartbeat);
   const ctx = {
     Body: prompt,
     From: sender,
