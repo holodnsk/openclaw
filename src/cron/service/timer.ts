@@ -40,6 +40,10 @@ export function armTimer(state: CronServiceState) {
 
 export async function onTimer(state: CronServiceState) {
   if (state.running) {
+    // Another onTimer is already executing (e.g. a long-running heartbeat wait).
+    // Re-arm the timer so we come back and check for due jobs once the current
+    // execution finishes or after MAX_TIMER_DELAY_MS, whichever comes first.
+    armTimer(state);
     return;
   }
   state.running = true;
